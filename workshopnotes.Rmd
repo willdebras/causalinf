@@ -1,0 +1,12 @@
+---
+title: "Causal Inference notes"
+author: "Will Bonnell"
+date: "April 18, 2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## CCASA Causal Inference Workshop
