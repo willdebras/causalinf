@@ -1,6 +1,6 @@
 ---
-title: "Chicago Chapter of the American Statistical Association Workshop on Causal Inference"
-author: "Will Bonnell"
+title: "Workshop on Causal Inference"
+author: "Chicago Chapter of the American Statistical Association"
 date: "April 18, 2019"
 output: 
   html_document:
@@ -12,9 +12,11 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+library(knitr)
 ```
 
-## Introduction
+##Introduction
 
 - Recognize what to control for in DAGs
 
@@ -28,7 +30,7 @@ knitr::opts_chunk$set(echo = TRUE)
   
     - Specify and defend assumptions
 
-##Causal effects & confounding
+##Causal effects and confounding
 
 ###Causal effects
 
@@ -270,7 +272,7 @@ In this example we can block the backdoor path of information from a to y by con
 
 - Can also control for other risk factors affecting y for sake of efficiency gains, does not affect causal outcome
 
-- COnditioning on collider opens path between vars leading into collider (ex 4 in slides)
+- Conditioning on collider opens path between vars leading into collider (ex 4 in slides)
 
 
 ```{r dag4, message = FALSE, warning = FALSE}
@@ -292,7 +294,7 @@ ggdag(dag, layout = circle) +
 
 ``` 
 
-Here we need to condition on x3 because we create another backdoor path when we condition on x3.
+Here we need to condition on x3 because we need to prevent a backdoor path from x1 but we create another backdoor path when we condition on x3. We must also condition on x2.
 
 ####Strategies
 
@@ -314,15 +316,463 @@ Here we need to condition on x3 because we create another backdoor path when we 
     
     - inferential challenge about getting SEs right for data collection
 
-##Causal Mediation
+##Identifiability and estimation
+
+###Identification
+
+Identifying assumptions
+
+- Ignorability
+
+    - If we condition on L, A tells us nothing about Y
+
+- Positivity 
+
+- Consistency
+
+####Special case:  standardization
+
+E(*Y*^a^) = $\sum_{l = 0}^{1} f(x)$E(*Y*|*A* = *a*, *L*)*dF*(*L*)
+
+####Parametric G-Formula 
+
+Could estimate E(Y^a^) by using models for E(Y|A = a,L) and *f*(L)
+
+E(*Y*^*a*^) = $\int_{}^{}$ E(*Y*|*A* = *a*,*L*;$\theta$)f(*L*;$\eta$)d*L*
+
+####Example
+
+- Can fit logistic regression Y|A,L
+
+- Get predicted values for Y for each L~i~ if A set to a 
+
+- Average over empirical distribution of L
+
+- do for *a* = 0 and *a* = 1
+
+###Weighting
+
+####Standardization approach
+
+Averaging over the marginal distributon of L 
+
+- downweights those exposed to L and upweights those not exposed to L 
+
+####Propensity score
+
+The propensity score is the conditional probability of treatment P(*A*|*L*)
+
+IPTW
+
+- Can weight by the inverse of the probability of treatment received 
+
+    - If P(A = 1|L) is high we expect that and we want that case to be weighted down
+    - If P(A = 1|L) is low we don't expect that and we want that case to be weighted up
+
+- Creating a pseudo-population by getting rid of confounder by creating a balance between treated and controlled
+
+- When we have balance we can just take sample means and have weighted estimates
+
+- Basically "erasing an arrow" from confounding, but you have to get the right Ls to weight to
+
+####Stabilized weights
+
+If the prob of a particular treatment give *L* is small, then the weight will be large, the use of stabilized weights can help
+
+####What we know about IPTW
+
+- large weights lead to large SEs
+
+- very large weights if positivity nearly violated
+
+- We can do trimming or weight truncation to deal with large weights 
+
+  - weight truncation is setting a max weight
+  
+  - augmented IPTW - doubly robust and more efficient than IPTW
+  
+###Matching 
+
+Matching is an alternative to standardization and IPTW estimation
+
+- Idea is to make the data more like what you would expect from a randomized trial
+
+- Match treated subjects to controls subjects on the confounders
+
+- Advtanges to matching
+
+    - controlling for confounders is achieved at the design phase without looking at the outcome
+    
+    - Matching will reveal lack of overlap in covariate distribution
+    
+    - Once data are matched, essentiall treated as if from an RCT
+    
+####Distance
+
+- Matching requires calculating distance between L~i~ and L~j~
+
+    - can do this with exact matching
+    
+    - mahalanobis distance
+    
+    - mahalanobis distance with a caliper (if distance to large, we force it to not match)
+    
+    - propensity score - probability of treatment and compare scores for matching
+    
+    - propoensity score with caliper
+    
+- Can combine measures, such as using mahalanobis with propensity score caliper or KNN matching
+
+####Propensity score matching
+
+- If there is poor overlap we'd have to do extrapolation. We'd lose lots of data if we did trimming. 
+
+- For subjects *i*,*j*, We then can create a distance matrix between e~i~ and e~j~ (propensity of *i* and *j*)
+
+####Criticisms
+
+- Propensity is based on treatment so we might be overweighting a covariate highly related to *p* of treatment even though it might not be that related to outcome 
+
+####Some match types
+
+- Nearest Neighbor matching
+
+    - Computationally fast but not optimal 
+
+- Optimal matching
+
+    - Size of population limiting on ability to do optimal matching
+    
+- Sparse optimal matching
+
+    - Somewhat stratified
+    
+    - Optimal matching within blocks
+    
+- After matching you can analyze outcome data
 
 
-##Estimation, examples in R
 
+###R examples 
 
-```{r load}
+####Toy example
 
+```{r toy}
+
+library(sandwich)
+
+n<-200
+L<-rbinom(n,1,0.5)
+A<-rbinom(n,1,(0.3+0.3*L))
+Y<-rnorm(n,(35+10*L+20*A),5)
+mydata<-data.frame(cbind(A,L,Y))
+
+kable(head(mydata))
 
 ```
 
+Let's look at the diff of means
 
+```{r dff}
+
+#unadjusted
+#mean of Y for treated subjects
+mean(Y[A==1])
+#mean of Y for untreated subjects
+mean(Y[A==0])
+#difference
+mean(Y[A==1])-mean(Y[A==0])
+
+```
+
+#####We can fit a regression here.
+
+```{r reg}
+reg<-lm(Y~A+L,data=mydata)
+summary(reg)
+
+```
+
+#####Let's compute standardization.
+
+``` {r stan}
+#can do by hand since one binary covariate
+pr.l <- prop.table(table(mydata$L))
+kable(pr.l)
+
+tab.out <- aggregate(Y ~ A + L, mydata, mean)
+kable(tab.out)
+```
+
+#####Conditional means
+
+We can computer conditional means and weigh by value of the covariate. This will allow us to correct the bias of treatment.
+
+```{r est}
+((mean(mydata$Y[mydata$A==1 & mydata$L==1]) - 
+    mean(mydata$Y[mydata$A==0 & mydata$L==1]))*pr.l[2]) + 
+  (mean(mydata$Y[mydata$A==1 & mydata$L==0]) - 
+     mean(mydata$Y[mydata$A==0 & mydata$L==0]))*pr.l[1]
+
+```
+
+#####We can also calculate propensity scores:
+
+
+```{r pro}
+p.score <- glm(A ~ as.factor(L), data=mydata, family=binomial)
+p.a <- ifelse(mydata$A == 0, 1 - predict(p.score, type = "response"),
+                  predict(p.score, type = "response"))
+kable(table(p.a))
+
+```
+
+We get four values corresponding to two values of a for each treated and untreated L.
+
+
+#####Next we can generate IP weights
+
+```{r ip}
+mydata$w <- 1/p.a
+kable(table(mydata$w))
+summary(mydata$w)
+sd(mydata$w)
+
+```
+
+#####Let's estimate ATE 
+
+```{r ate}
+mean(mydata$w*as.numeric(mydata$A==1)*mydata$Y) - 
+  mean(mydata$w*as.numeric(mydata$A==0)*mydata$Y)
+```
+
+#####Creating a marginal structural model
+
+```{r l}
+msm <- lm(Y  ~ A, data = mydata, weights = w)
+```
+
+#####Now with inference 
+
+Weights create a pseudo population:
+
+```{r inf}
+SE <-sqrt(diag(vcovHC(msm, type="HC0"))) # robust standard errors
+beta <- coef(msm)
+lcl <- beta-1.96*SE 
+ucl <- beta+1.96*SE
+cbind(beta, lcl, ucl)[2,]
+```
+
+####Real data
+
+#####Let's load our data:
+
+```{r load, message = FALSE}
+
+library(tableone)
+library(Matching)
+library(geepack)
+library(stats)
+
+
+load(url("https://urldefense.proofpoint.com/v2/url?u=http-3A__biostat.mc.vanderbilt.edu_wiki_pub_Main_DataSets_rhc.sav&d=DwIGAg&c=lEzKI_JJakPtcnbAQ6Q5xQ&r=ADBnQF_uxktNSAkWyomgLeFb-eOkP5LRzvDAXj-4ESQ&m=GJ1JdJTpKzJvLWlb0bGX87lB6Gx5rPtIV9m0KvRo6AI&s=639__Kuc3BOyiS-CFnTwBH3AVQyrBK3GMJStuyusjrk&e="))
+
+kable(head(rhc))
+```
+
+#####Then we create binaries out of cat1 and make a new dataset:
+
+```{r stuff}
+ARF<-as.numeric(rhc$cat1=='ARF')
+CHF<-as.numeric(rhc$cat1=='CHF')
+Cirr<-as.numeric(rhc$cat1=='Cirrhosis')
+colcan<-as.numeric(rhc$cat1=='Colon Cancer')
+Coma<-as.numeric(rhc$cat1=='Coma')
+COPD<-as.numeric(rhc$cat1=='COPD')
+lungcan<-as.numeric(rhc$cat1=='Lung Cancer')
+MOSF<-as.numeric(rhc$cat1=='MOSF w/Malignancy')
+sepsis<-as.numeric(rhc$cat1=='MOSF w/Sepsis')
+female<-as.numeric(rhc$sex=='Female')
+died<-as.numeric(rhc$death=='Yes')
+age<-rhc$age
+treatment<-as.numeric(rhc$swang1=='RHC')
+meanbp1<-rhc$meanbp1
+
+
+mydata <-data.frame(cbind(ARF,CHF,Cirr,colcan,Coma,lungcan,MOSF,sepsis,
+              age,female,meanbp1,treatment,died))
+
+kable(head(mydata))
+
+```
+
+#####Making a vector out of covariates and printing summary results
+
+```{r xvar, message=FALSE}
+xvars<-c("ARF","CHF","Cirr","colcan","Coma","lungcan","MOSF","sepsis",
+         "age","female","meanbp1")
+table1<- CreateTableOne(vars=xvars,strata="treatment", data=mydata, test=FALSE)
+
+print(table1,smd=TRUE)
+```
+
+#####Print unadjusted mean diffs
+
+```{r mea}
+mean(died[treatment==1])
+mean(died[treatment==0])
+```
+
+#####Create an outmodel
+
+```{r out}
+outmodel<-glm(died~treatment+ARF+CHF+Cirr+colcan+Coma+lungcan+MOSF+
+               sepsis+age+female+meanbp1,
+             family=binomial(),data=mydata)
+```
+
+#####Can create predicted values for each person if and if not treated
+
+```{r risk}
+
+#now get predicted values for each person if they had been treated
+mydata1<-mydata
+mydata1$treatment<-1
+pred1<-predict(outmodel,mydata1,type='response')
+
+#get predicted values for each person if they had not been treated
+mydata0<-mydata
+mydata0$treatment<-0
+pred0<-predict(outmodel,mydata0,type='response')
+
+mean(pred1)
+mean(pred0)
+```
+
+#####Propensity Scores
+
+```{r propen}
+psmodel<-glm(treatment~ARF+CHF+Cirr+colcan+Coma+lungcan+MOSF+
+               sepsis+age+female+meanbp1,
+             family=binomial(),data=mydata)
+
+#show coefficients etc
+summary(psmodel)
+#create propensity score
+pscore<-psmodel$fitted.values
+```
+
+#####Create weights from pscore
+
+We can output quick histograms to make sure there is enough overlap.
+
+```{r ps, warning = FALSE}
+#unstabilized weights
+wt<-ifelse(treatment==1,1/pscore,1/(1-pscore))
+hist(wt)
+summary(wt)
+
+#stabilized weights
+#probability of treatment (unconditional)
+probt<-mean(treatment)
+sw<-ifelse(treatment==1,probt/pscore,(1-probt)/(1-pscore))
+hist(sw)
+summary(sw)
+```
+
+#####Do a weighted regression
+
+```{r wei, warning = FALSE}
+weighted.mean(died[treatment==1],wt[treatment==1])
+weighted.mean(died[treatment==0],wt[treatment==0])
+
+#now do weighted regression (get same estimates)
+id<-1:length(died)
+msm1 <- geeglm(as.numeric(died) ~ treatment, 
+               id = id,
+               weights = wt,
+               family = binomial(link=logit))
+summary(msm1)
+head(msm1$fitted.values)
+
+#using stabilized weights
+msm2 <- geeglm(as.numeric(died) ~ treatment, 
+               id = id,
+               weights = sw,
+               data=mydata,
+               family = binomial(link=logit))
+summary(msm2)
+head(msm2$fitted.values)
+```
+
+####Matching example 
+
+```{r mat, warning = FALSE}
+
+
+greedymatch<-Match(Tr=treatment,M=1,X=mydata[xvars],replace=FALSE)
+matched<-mydata[unlist(greedymatch[c("index.treated","index.control")]), ]
+
+#get table 1 for matched data with standardized differences
+matchedtab1<-CreateTableOne(vars=xvars, strata ="treatment", 
+                            data=matched, test = FALSE)
+print(matchedtab1, smd = TRUE)
+
+#outcome analysis
+y_trt<-matched$died[matched$treatment==1]
+y_con<-matched$died[matched$treatment==0]
+mean(y_trt)
+mean(y_con)
+
+#pairwise difference
+diffy<-y_trt-y_con
+
+#paired t-test
+t.test(diffy)
+
+#McNemar test
+kable(table(y_trt,y_con))
+
+mcnemar.test(matrix(c(973,513,395,303),2,2))
+
+```
+
+##Causal Mediation
+
+This is a case where we have an intervening variable that affects outcome, but isn't confounding.
+
+###Direct and indirect effects
+
+```{r med}
+
+dag3 <- dagify(y ~ x,
+       y ~ x + m, 
+       m ~ x)
+dag_med <- tidy_dagitty(dag3)
+
+ggdag(dag_med, layout = circle) +
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+```
+
+Traditional approach is to fit two regression models (Baron and Kenny)
+
+####Controlled direct effects
+
+- Setting treatment to *a* but for mediator values we set values to Y^A,MA^
+
+####Natural direct effects
+
+- setting treatment a to a then comparing the potential outcomes if mediator was set to what it would be if treatment a versus if treatment 0
+
+####Decomposition
+
+####Cross-world conterfactual
+
+- unobservable usually 
+
+- Integrating over a different distribution
+
+    - Average mediator distribution over non treated
