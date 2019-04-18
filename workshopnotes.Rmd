@@ -1,12 +1,328 @@
 ---
-title: "Causal Inference notes"
+title: "Chicago Chapter of the American Statistical Association Workshop on Causal Inference"
 author: "Will Bonnell"
 date: "April 18, 2019"
-output: html_document
+output: 
+  html_document:
+    theme: cerulean
+    toc: yes
+    toc_depth: 4
+    toc_float: yes
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## CCASA Causal Inference Workshop
+## Introduction
+
+- Recognize what to control for in DAGs
+
+- Estimation methods
+
+- Steps to causal inference
+  
+    - Define causal effects
+  
+    - Specify models
+  
+    - Specify and defend assumptions
+
+##Causal effects & confounding
+
+###Causal effects
+
+####*A*: treatment
+
+- exposure/intervention of interest
+
+- Random variable
+
+- lowercase *a* refers to a realization of var *A*
+
+- Treatment status of subject *i*
+
+####*Y*: outcome
+
+- Could be continuous
+
+- Could be time to event
+
+- Could be multidimensional
+
+####Potential outcomes
+
+- Y^a^ for continuous ind var
+
+- Y^1^ and Y^0^ for binary
+
+    - i.e. Y^1^: time until individual would get flu if they received the vaccine
+    
+    - Y^0^: time until the individual would get the flu if they did not receive the vaccine
+    
+####Observed outcomes
+
+- Observed outcome *Y* is the outcome under treatment a subject received, i.e. *Y* = *Y*^A^
+
+- Missing data problem where selection decided by treatment received
+
+####Independence 
+
+- Assuming that the treatment given to one subject does not affect outcome for another subject
+
+####Causal effects
+
+- A had causal effect on *Y* if *Y*^1^ =/= *Y*^0^
+
+- Cant assume causal effect of ibuprofen without knowing untreated effect
+
+- However can make estimates on population level (average causal effects)
+
+- *E*(*Y*^1^ - *Y*^0^)
+
+    - Average outcome if everyone had been treated versus if everyone had been treated 
+      
+    - Typically not equal to E(*Y*|A = 1) - E(*Y*|A = 0) (two subpopulations) unless we randomize
+      
+    - Pearl uses notation E(*Y*|*do*(*A* = 1)) - E(*Y*|*do*(A = 0))
+      
+    - *do* notation means "set" treatment, equal to notation on top
+      
+####Other causal effects
+
+- Potential risk ratio
+
+- Causal effect of a subpopulation *E*(*Y*^1^ - *Y*^0^|*V* = *v*)
+
+- Removing an exposure, hypothetical "what ifs" E(*Y*^1^ - *Y*^0^ |A = 1)
+
+- Quantile causal effects *F*~$\overline{1}$~^1^(*p*) - *F*~$\overline{0}$~^1^(*p*)
+
+####Valid examples
+
+- Invalid when comparing same treatment on two separate groups without strong assuptions
+
+- Not valid when comparing separate subpopulations even when we have different treatment effects
+
+###Confounding
+
+- When there are variables that affect the treatment decision and outcome
+
+    - Also possible in randomized trials when there is noncompliance
+      
+    - Creates a problem because there is a lack of comparability between groups
+
+####Example 
+
+- Severe injury is affecting likelihood of getting surgery but its not deterministic
+
+- Treatment will bump up *Y*^a^
+
+- Will have separate distributions for *a*=0 and *a*=1, but curve might get pulled in one direction by *L*
+
+####Types of confounding
+
+- Controllable confounding
+
+- No confounding 
+
+- Confounding not controllable using standard methods but controllable using others (e.g. instrumental variables)
+
+    - COuld use a natural randomizer
+    
+    - Difference of differences tries to difference out unmeasured confounding variables
+    
+- Uncontrollable confounding
+
+    - Can do sensitivity analysis
+    
+####Controllable confounding
+
+- *L* is set of baseline (pre-treatment) covariates
+
+- If we control for confounding we can assume any other differnces are random
+
+- Controllable if there is overt (not hidden) bias
+    
+    - *f*(*Y*^0^, *Y*^1^ |*L*,*A*) = *f*(*Y*^0^, *Y*^1^ |*L*)
+    
+    - f(*A*|*L*, *Y*^0^, *Y*^1^) = f(*A*|*L*)
+    
+####Ignorability 
+
+- Basically means conditional randomization
+
+- Treatment depends on potential outcomes
+
+###Graphical Models
+
+- dag terminology
+
+    - Nodes are variables and paths are flow from one variable to another
+    
+```{r dag, message = FALSE, warning = FALSE}
+
+library(dagitty)
+library(ggdag)
+
+dagified <- dagify(z ~ x,
+                   y  ~ z,
+                   exposure = "x",
+                   outcome = "y")
+dag <- tidy_dagitty(dagified)
+
+ggdag(dag, layout = circle) +
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+```
+
+- In this DAG:
+
+    - X is parent of Z, ancestor of Y
+    
+    - Y is child of Z, descendent of X
+
+    - This is an example of chains
+
+
+####Information flow
+
+- Forks   
+
+    - A $\leftarrow$ Z $\rightarrow$ B
+
+    - X and Y are not independent in diagram below since information flows from Z in both cases 
+
+    - X and Y are associated with eachother
+
+####Paths that do not induce association
+
+- In cases of a *collider* G
+
+    - A $\rightarrow$ G $\leftarrow$ B
+    
+    - A and B both affect G 
+    
+    - A and B are both independent
+    
+#### Blocking
+
+- Paths can be *blocked* by conditioning on nodes in the path 
+    
+- Stopping the independence 
+
+- i.e. temperature -> icy sidewalks -> slipping
+    
+- We can block the relationship between temperature and slipping by conditioning on sidewalks
+    
+#### D-separation
+
+A path is d-separated by a set of nodes C if:
+
+- it contains a chain (D$\rightarrow$E$\rightarrow$F) and the middle part is in C 
+    
+      OR
+    
+- it contains a fork (D$\leftarrow$E$\rightarrow$F) and the middle part is in C 
+    
+      OR 
+    
+- it contains an inverted form (D$\rightarrow$E$\leftarrow$F) and the middle part is not in C
+
+####Backdoor paths
+
+*Backdoor paths* from treatment A to outcome Y are paths from A to  that travel through arrows going into A
+
+- These confound the relationship between A and Y 
+
+- Need to be blocked to make causal assumptions about effect of A on Y
+
+####Backdoor path criterion
+
+Set of variables L is sufficient to control for confounding if:
+
+- It blocks all backdoor paths from treatment to the outcome
+
+- It does not include any descendants of treatment
+
+This is the *backdoor path criterion*
+
+- Can identify backdoor paths as those that go against the flow of information
+
+```{r dag3, message = FALSE, warning = FALSE}
+
+
+dagified <- dagify(y ~ a,
+                   a  ~ w,
+                   y ~ w,
+                   w ~ z,
+                   a ~ z,
+                   exposure = "a",
+                   outcome = "y")
+dag <- tidy_dagitty(dagified)
+
+ggdag(dag, layout = circle) +
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+``` 
+
+In this example we can block the backdoor path of information from a to y by controlling for W or for W and Z
+
+- Can also control for other risk factors affecting y for sake of efficiency gains, does not affect causal outcome
+
+- COnditioning on collider opens path between vars leading into collider (ex 4 in slides)
+
+
+```{r dag4, message = FALSE, warning = FALSE}
+
+
+dagified <- dagify(y ~ a,
+                   y  ~ x2,
+                   x3 ~ x2,
+                   x3 ~ x1,
+                   a ~ x1,
+                   x3 ~ a,
+                   y ~ x3,
+                   exposure = "a",
+                   outcome = "y")
+dag <- tidy_dagitty(dagified)
+
+ggdag(dag, layout = circle) +
+  theme(panel.background = element_blank(), panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+
+``` 
+
+Here we need to condition on x3 because we create another backdoor path when we condition on x3.
+
+####Strategies
+
+- Adjust for all pre-treatment variables
+
+    - controlling for instruments can inflate standard errors 
+
+- Select minimum set using backdoor criterion
+
+- Use disjunctive cause criterion
+
+    - Requires knowing all vars that directly affect treatment decision and outcome
+    
+    - Just need to control for all potentially causal variables on both treatment and exposure
+    
+- Debate on data-driven approach
+
+    - Could discard many weak confounders 
+    
+    - inferential challenge about getting SEs right for data collection
+
+##Causal Mediation
+
+
+##Estimation, examples in R
+
+
+```{r load}
+
+
+```
+
+
